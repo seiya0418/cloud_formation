@@ -1,0 +1,241 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:
+  'infrastructure as Code'
+
+Parameters:
+  VpcCIDR:
+    Description: IP range for VPC
+    Type: String
+    Default: 10.0.0.0/16
+  PublicSubnet1aCIDR:
+    Description: IP range for PublicSubnet1a
+    Type: String
+    Default: 10.0.0.0/24
+  PrivateSubnet1aCIDR:
+    Description: IP range for PrivateSubnet1a
+    Type: String
+    Default: 10.0.2.0/24
+  AllCIDR:
+    Description: IP range for all
+    Type: String
+    Default: 0.0.0.0/0
+
+Resources:
+  wordpressVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: wordpressVpc
+
+  wordpressInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: wordpressInternetGateway
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref wordpressInternetGateway
+      VpcId: !Ref wordpressVpc
+
+  wordpressPublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      CidrBlock: !Ref PublicSubnet1aCIDR
+      VpcId: !Ref wordpressVpc
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: wordpressPublicSubnet1a
+
+  wordpressPrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      CidrBlock: !Ref PrivateSubnet1aCIDR
+      VpcId: !Ref wordpressVpc
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: wordpressPrivateSubnet1a
+
+  wordpressSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: wordpressSecurityGroup
+      GroupName: wordpressSecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: !Ref AllCIDR
+          Description: inbound for ssh
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref AllCIDR
+          Description: inbound for http
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+      SecurityGroupEgress:
+        - CidrIp: !Ref AllCIDR
+          Description: outbound for all
+          FromPort: -1
+          IpProtocol: -1
+          ToPort: -1
+      VpcId: !Ref wordpressVpc
+      Tags:
+        - Key: Name
+          Value: wordpressSecurityGroup
+  wordpressRDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: wordpressRDSSecurityGroup
+      GroupName: wordpressRDSSecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: !Ref AllCIDR
+          Description: inbound for mysql
+          FromPort: 3306
+          IpProtocol: tcp
+          ToPort: 3306
+      SecurityGroupEgress:
+        - CidrIp: !Ref AllCIDR
+          Description: outbound for all
+          FromPort: -1
+          IpProtocol: -1
+          ToPort: -1
+      VpcId: !Ref wordpressVpc
+      Tags:
+        - Key: Name
+          Value: wordpressRDSSecurityGroup
+
+  wordpressPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref wordpressVpc
+      Tags:
+        - Key: Name
+          Value: wordpressPublicRouteTable
+  wordpressDefaultPublicRouteTable:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref wordpressPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref wordpressInternetGateway
+  wordpressPublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref wordpressPublicRouteTable
+      SubnetId: !Ref wordpressPublicSubnet1a
+
+  wordpressEIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: wordpressEIP1
+
+  EIPTowordpressEC21a:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      EIP: !Ref wordpressEIP1
+      InstanceId: !Ref wordpressEC21a
+  wordpressEC21a:
+    Type: AWS::EC2::Instance
+    Properties:
+      DisableApiTermination: false
+      ImageId: "ami-0b88f068897ad2c33"
+      InstanceInitiatedShutdownBehavior: stop
+      InstanceType: t2.micro
+      KeyName: samplekey
+      Monitoring: false
+      SecurityGroupIds:
+        - !Ref wordpressSecurityGroup
+      SourceDestCheck: true
+      SubnetId: !Ref wordpressPublicSubnet1a
+      Tags:
+        - Key: Name
+          Value: wordpressEC21a
+      Tenancy: default
+
+  wordpressRDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      AllowMajorVersionUpgrade: true
+      AutoMinorVersionUpgrade: true
+      AvailabilityZone: !Sub ${AWS::Region}a
+      DBInstanceClass: db.t2.micro
+      VPCSecurityGroups:
+        - !Ref wordpressRDSSecurityGroup
+      DBSubnetGroupName: !Ref wordpressRDSSubnetGroup
+      DeleteAutomatedBackups: false
+      DeletionProtection: false
+      EnableIAMDatabaseAuthentication: false
+      Engine: MySQL
+      EngineVersion: 8.0.21
+      MasterUsername: root
+      MasterUserPassword: rootpass
+      MonitoringInterval: 0
+      MultiAZ: false
+      Port: 3306
+      PubliclyAccessible: false
+      StorageEncrypted: false
+      StorageType: standard
+      Tags:
+        - Key: Name
+          Value: wordpressRDS
+      UseDefaultProcessorFeatures: true
+
+  wordpressRDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: subnet group for rds
+      DBSubnetGroupName: wordpressRDSSubnetGroup
+      SubnetIds:
+        - !Ref wordpressPrivateSubnet1a
+      Tags:
+        - Key: Name
+          Value: wordpressRDSSubnetGroup
+#S3
+  wordpressS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:  wordpresss3bucket
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Enabled
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: "wordpressS3Bucket"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Action:
+              - "s3:GetObject"
+            Effect: "Allow"
+            Resource:
+              Fn::Join:
+                - ""
+                -
+                  - "arn:aws:s3:::"
+                  -
+                    Ref: "wordpressS3Bucket"
+                  - "/*"
+            Principal: "*"
