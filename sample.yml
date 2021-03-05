@@ -1,0 +1,382 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:
+  'infrastructure as Code'
+# ---------------
+# Parameters定義
+# ---------------
+Parameters:
+  VpcCIDR:
+    Description: IP range for VPC
+    Type: String
+    Default: 10.0.0.0/16
+  PublicSubnet1aCIDR:
+    Description: IP range for PublicSubnet1a
+    Type: String
+    Default: 10.0.0.0/24
+  PublicSubnet1cCIDR:
+    Description: IP range for PublicSubnet1c
+    Type: String
+    Default: 10.0.1.0/24
+  PrivateSubnet1aCIDR:
+    Description: IP range for PrivateSubnet1a
+    Type: String
+    Default: 10.0.2.0/24
+  PrivateSubnet1cCIDR:
+    Description: IP range for PrivateSubnet1c
+    Type: String
+    Default: 10.0.3.0/24
+  AllCIDR:
+    Description: IP range for all
+    Type: String
+    Default: 0.0.0.0/0
+# ---------------
+# Resources定義
+# ---------------
+Resources:
+  # VPC定義
+  sampleVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true #VPC 内に起動されるインスタンスがDNSホスト名を取得するかどうかを示す
+      EnableDnsSupport: true #VPC に対して DNS 解決がサポートされているかどうかを示す
+      InstanceTenancy: default #VPC 内に起動されるインスタンスの許可されているテナンシー。
+      Tags:
+        - Key: Name
+          Value: sampleVpc
+  # インターネットゲートウェイ定義
+  sampleInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: sampleInternetGateway
+
+  # インターネットゲートウェイ-VPC関連付け定義
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref sampleInternetGateway #52行目と紐づいている
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+
+  # パブリックサブネット定義
+  samplePublicSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      CidrBlock: !Ref PublicSubnet1aCIDR #13行目と紐づいている
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+      MapPublicIpOnLaunch: false 
+      Tags:
+        - Key: Name
+          Value: samplePublicSubnet1a
+  samplePublicSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}c"
+      CidrBlock: !Ref PublicSubnet1cCIDR #17行目と紐づいている
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: samplePublicSubnet1c
+
+  # プライベートサブネット定義
+  samplePrivateSubnet1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      CidrBlock: !Ref PrivateSubnet1aCIDR #21行目と紐づいている
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: samplePrivateSubnet1a
+  samplePrivateSubnet1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}c"
+      CidrBlock: !Ref PrivateSubnet1cCIDR #25行目と紐づいている
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: samplePrivateSubnet1c
+
+  # セキュリティグループ定義
+  sampleSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: sampleSecurityGroup #必須
+      GroupName: sampleSecurityGroup
+      SecurityGroupIngress: #インバウンドルール
+        - CidrIp: !Ref AllCIDR #29行目と紐づいている
+          Description: inbound for ssh
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+        - CidrIp: !Ref AllCIDR #29行目と紐づいている
+          Description: inbound for http
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+      SecurityGroupEgress: #アウトバウンドルール
+        - CidrIp: !Ref AllCIDR #29行目と紐づいている
+          Description: outbound for all
+          FromPort: -1
+          IpProtocol: -1
+          ToPort: -1
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+      Tags:
+        - Key: Name
+          Value: sampleSecurityGroup
+  sampleRDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: sampleRDSSecurityGroup
+      GroupName: sampleRDSSecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: !Ref AllCIDR #29行目と紐づいている
+          Description: inbound for mysql
+          FromPort: 3306
+          IpProtocol: tcp
+          ToPort: 3306
+      SecurityGroupEgress:
+        - CidrIp: !Ref AllCIDR #29行目と紐づいている
+          Description: outbound for all
+          FromPort: -1 #-1 の値は、すべての ICMP/ICMPv6 タイプを示します。
+          IpProtocol: -1
+          ToPort: -1
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+      Tags:
+        - Key: Name
+          Value: sampleRDSSecurityGroup
+
+  # ルートテーブル定義
+  samplePublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref sampleVpc #40行目と紐づいている
+      Tags:
+        - Key: Name
+          Value: samplePublicRouteTable
+  sampleDefaultPublicRouteTable:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref samplePublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref sampleInternetGateway
+  samplePublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref samplePublicRouteTable
+      SubnetId: !Ref samplePublicSubnet1a
+  samplePublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref samplePublicRouteTable
+      SubnetId: !Ref samplePublicSubnet1c
+
+  # EIP定義
+  sampleEIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: sampleEIP2
+
+  sampleEIP2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: sampleEIP2
+
+  #EIP-EC2関連定義
+  EIPTosampleEC21a:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      EIP: !Ref sampleEIP1 #192行目と紐づいている
+      InstanceId: !Ref sampleEC21a #202行目と紐づいている
+
+  EIPTosampleEC21c:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      EIP: !Ref sampleEIP2 #192行目と紐づいている
+      InstanceId: !Ref sampleEC21c #202行目と紐づいている
+
+  # EC2インスタンス定義
+  sampleEC21a:
+    Type: AWS::EC2::Instance
+    Properties:
+      DisableApiTermination: false
+      ImageId: "ami-0b88f068897ad2c33"
+      InstanceInitiatedShutdownBehavior: stop
+      InstanceType: t2.micro
+      KeyName: samplekey
+      Monitoring: false
+      SecurityGroupIds:
+        - !Ref sampleSecurityGroup
+      SourceDestCheck: true
+      SubnetId: !Ref samplePublicSubnet1a
+      Tags:
+        - Key: Name
+          Value: sampleEC21a
+      Tenancy: default
+      
+  sampleEC21c:
+    Type: AWS::EC2::Instance
+    Properties:
+      DisableApiTermination: false
+      ImageId: "ami-0b88f068897ad2c33"
+      InstanceInitiatedShutdownBehavior: stop
+      InstanceType: t2.micro
+      KeyName: samplekey
+      Monitoring: false
+      SecurityGroupIds:
+        - !Ref sampleSecurityGroup
+      SourceDestCheck: true
+      SubnetId: !Ref samplePublicSubnet1c
+      Tags:
+        - Key: Name
+          Value: sampleEC21c
+      Tenancy: default
+# RDS定義
+  sampleRDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      AllowMajorVersionUpgrade: true
+      AutoMinorVersionUpgrade: true
+      AvailabilityZone: !Sub ${AWS::Region}a
+      DBInstanceClass: db.t2.micro
+      VPCSecurityGroups:
+        - !Ref sampleRDSSecurityGroup
+      DBSubnetGroupName: !Ref sampleRDSSubnetGroup
+      DeleteAutomatedBackups: false
+      DeletionProtection: false
+      EnableIAMDatabaseAuthentication: false
+      Engine: MySQL
+      EngineVersion: 8.0.21
+      MasterUsername: root
+      MasterUserPassword: rootpass
+      MonitoringInterval: 0
+      MultiAZ: false
+      Port: 3306
+      PubliclyAccessible: false
+      StorageEncrypted: false
+      StorageType: standard
+      Tags:
+        - Key: Name
+          Value: sampleRDS
+      UseDefaultProcessorFeatures: true
+
+  # RDSサブネットグループ定義
+  sampleRDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: subnet group for rds
+      DBSubnetGroupName: sampleRDSSubnetGroup
+      SubnetIds:
+        - !Ref samplePrivateSubnet1a
+        - !Ref samplePrivateSubnet1c
+      Tags:
+        - Key: Name
+          Value: sampleRDSSubnetGroup
+#S3
+  cloud1S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:  cloud1s3bucket #バケットネームには大文字を入れない
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false #三列目
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false #四列目
+      VersioningConfiguration:
+        Status: Enabled
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: 
+        Ref: "cloud1S3Bucket"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Action: 
+              - "s3:GetObject"
+            Effect: "Allow"
+            Resource: 
+              Fn::Join: 
+                - ""
+                - 
+                  - "arn:aws:s3:::"
+                  - 
+                    Ref: "cloud1S3Bucket"
+                  - "/*"
+            Principal: "*" 
+
+#ALB定義
+  ElasticLoadBalancingV2LoadBalancer:
+        Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+        Properties:
+            Name: "samplealb"
+            Scheme: "internet-facing"
+            Type: "application"
+            Subnets: 
+              - !Ref samplePublicSubnet1a
+              - !Ref samplePublicSubnet1c
+            SecurityGroups: 
+              - !Ref sampleSecurityGroup
+            IpAddressType: "ipv4"
+            LoadBalancerAttributes: 
+              - 
+                Key: "access_logs.s3.enabled"
+                Value: "false"
+              - 
+                Key: "idle_timeout.timeout_seconds"
+                Value: "60"
+              - 
+                Key: "deletion_protection.enabled"
+                Value: "false"
+              - 
+                Key: "routing.http2.enabled"
+                Value: "true"
+              - 
+                Key: "routing.http.drop_invalid_header_fields.enabled"
+                Value: "false"
+              - 
+                Key: "routing.http.desync_mitigation_mode"
+                Value: "defensive"
+              - 
+                Key: "waf.fail_open.enabled"
+                Value: "false"
+  ElasticLoadBalancingV2Listener:
+        Type: "AWS::ElasticLoadBalancingV2::Listener"
+        Properties:
+            LoadBalancerArn: !Ref ElasticLoadBalancingV2LoadBalancer
+            Port: 80
+            Protocol: "HTTP"
+            DefaultActions:
+              - Type: forward
+                TargetGroupArn: !Ref ALBTargetGroup
+  #ALBターゲットグループの指定
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: ALBTargetGroup
+      Port: 80
+      Protocol: HTTP
+      Targets:
+        - Id:
+            Ref: sampleEC21a
+          Port: 80
+        - Id:
+            Ref: sampleEC21c
+          Port: 80
+      VpcId: !Ref sampleVpc
